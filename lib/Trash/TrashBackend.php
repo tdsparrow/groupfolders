@@ -22,6 +22,8 @@
 namespace OCA\GroupFolders\Trash;
 
 use OC\Files\Storage\Wrapper\Jail;
+use OC\Files\Storage\Wrapper\Wrapper;
+use OC\Files\ObjectStore\ObjectStoreStorage;
 use OCA\Files_Trashbin\Trash\ITrashBackend;
 use OCA\Files_Trashbin\Trash\ITrashItem;
 use OCA\GroupFolders\ACL\ACLManagerFactory;
@@ -144,7 +146,9 @@ class TrashBackend implements ITrashBackend {
 
 		$targetLocation = $targetFolder->getInternalPath() . '/' . $originalLocation;
 		$targetFolder->getStorage()->moveFromStorage($trashStorage, $node->getInternalPath(), $targetLocation);
-		$targetFolder->getStorage()->getCache()->moveFromCache($trashStorage->getCache(), $node->getInternalPath(), $targetLocation);
+		if (!$this->unwrapStorage($targetFolder->getStorage())->instanceOfStorage(ObjectStoreStorage::class)) {
+		  $targetFolder->getStorage()->getCache()->moveFromCache($trashStorage->getCache(), $node->getInternalPath(), $targetLocation);
+		}
 		$this->trashManager->removeItem($folderId, $item->getName(), $item->getDeletedTime());
 	}
 
@@ -178,7 +182,9 @@ class TrashBackend implements ITrashBackend {
 			$targetInternalPath = $trashFolder->getInternalPath() . '/' . $trashName;
 			if ($trashStorage->moveFromStorage($unJailedStorage, $unJailedInternalPath, $targetInternalPath)) {
 				$this->trashManager->addTrashItem($folderId, $name, $time, $internalPath, $fileEntry->getId());
-				$trashStorage->getCache()->moveFromCache($unJailedStorage->getCache(), $unJailedInternalPath, $targetInternalPath);
+				if (!$this->unwrapStorage($trashStorage)->instanceOfStorage(ObjectStoreStorage::class)) {
+				  $trashStorage->getCache()->moveFromCache($unJailedStorage->getCache(), $unJailedInternalPath, $targetInternalPath);
+				}
 			} else {
 				throw new \Exception("Failed to move groupfolder item to trash");
 			}
@@ -188,6 +194,12 @@ class TrashBackend implements ITrashBackend {
 		}
 	}
 
+	private function unwrapStorage(IStorage $storage): IStorage {
+		while ($storage->instanceOfStorage(Wrapper::class)) {
+		  $storage = $storage->getWrapperStorage();
+		}
+		return $storage;
+	}
 	private function unwrapJails(IStorage $storage, string $internalPath): array {
 		$unJailedInternalPath = $internalPath;
 		$unJailedStorage = $storage;
